@@ -10,7 +10,7 @@ import java.util.List;
 @RequestMapping("/api/notificaciones")
 @CrossOrigin(origins = "*")
 public class NotificacionController {
-
+    
     @Autowired
     private NotificacionRepository notificacionRepository;
 

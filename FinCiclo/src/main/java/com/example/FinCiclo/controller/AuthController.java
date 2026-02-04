@@ -85,6 +85,7 @@ public class AuthController {
         Usuario user = usuarioRepository.findByEmail(request.get("email"))
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
 
+    
         Map<String, Object> extraClaims = new HashMap<>();
         extraClaims.put("rol", user.getRol());
         extraClaims.put("nombre", user.getNombre());

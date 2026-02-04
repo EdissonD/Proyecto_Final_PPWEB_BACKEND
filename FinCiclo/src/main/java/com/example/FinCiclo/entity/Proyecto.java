@@ -10,7 +10,6 @@ import java.util.UUID;
 @Table(name = "proyectos")
 public class Proyecto {
 
-    @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
