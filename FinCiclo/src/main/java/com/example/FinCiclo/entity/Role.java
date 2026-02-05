@@ -16,8 +16,6 @@ public class Role {
     @Column(length = 30, nullable = false, unique = true)
     private RoleName name;
 
-    public Role() {}
-
     public Role(RoleName name) {
         this.name = name;
     }

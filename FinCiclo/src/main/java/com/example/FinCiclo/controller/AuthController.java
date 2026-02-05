@@ -22,7 +22,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @RestController
@@ -32,7 +31,7 @@ import java.util.Set;
 public class AuthController {
 
     private final UsuarioRepository usuarioRepository;
-    private final RoleRepository roleRepository;   // 👈 IMPORTANTE
+    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -40,29 +39,44 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
 
+        // Validar si el email ya existe
         if (usuarioRepository.findByEmail(request.getEmail()).isPresent()) {
             return ResponseEntity.badRequest()
                     .body(new AuthResponse("El email ya está registrado"));
         }
 
+        // Crear nuevo usuario
         Usuario usuario = new Usuario();
         usuario.setName(request.getNombre());
         usuario.setEmail(request.getEmail());
         usuario.setPassword(passwordEncoder.encode(request.getPassword()));
         usuario.setEnabled(true);
 
-        // 🔹 Rol por defecto
-        RoleName roleName = request.getRol() == null
-                ? RoleName.ROLE_USER
-                : RoleName.valueOf(request.getRol().toUpperCase());
+        // 🔹 Determinar rol - por defecto ROLE_USER
+        RoleName roleName = RoleName.ROLE_USER; // Valor por defecto
+        
+        if (request.getRol() != null && !request.getRol().isEmpty()) {
+            try {
+                // Asegurarse que el rol tenga el prefijo ROLE_
+                String rolString = request.getRol().toUpperCase();
+                if (!rolString.startsWith("ROLE_")) {
+                    rolString = "ROLE_" + rolString;
+                }
+                roleName = RoleName.valueOf(rolString);
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest()
+                        .body(new AuthResponse("Rol inválido: " + request.getRol()));
+            }
+        }
 
+        // ✅ CORRECCIÓN: Usar la variable roleName directamente
         Role role = roleRepository.findByName(roleName)
-                .orElseThrow(() -> new RuntimeException("Rol no encontrado"));
+                .orElseThrow(() -> new RuntimeException("Rol no encontrado: " + roleName));
 
         usuario.setRoles(Set.of(role));
-
         usuarioRepository.save(usuario);
 
+        // Generar JWT
         User userDetails = new User(
                 usuario.getEmail(),
                 usuario.getPassword(),
@@ -78,6 +92,7 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
 
         try {
+            // Autenticar usuario
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getEmail(),
@@ -89,17 +104,20 @@ public class AuthController {
                     .body(new AuthResponse("Credenciales incorrectas"));
         }
 
+        // Buscar usuario
         Usuario usuario = usuarioRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
 
+        // ✅ CORRECCIÓN: Agregar .name() para convertir enum a String
         User userDetails = new User(
                 usuario.getEmail(),
                 usuario.getPassword(),
                 usuario.getRoles().stream()
-                        .map(r -> new SimpleGrantedAuthority("ROLE_" + r.getName()))
+                        .map(r -> new SimpleGrantedAuthority(r.getName().name()))
                         .toList()
         );
 
+        // Generar JWT
         String jwt = jwtService.generateToken(new HashMap<>(), userDetails);
 
         return ResponseEntity.ok(new AuthResponse(jwt));
