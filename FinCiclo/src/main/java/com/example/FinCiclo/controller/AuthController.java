@@ -1,21 +1,29 @@
 package com.example.FinCiclo.controller;
 
-
+import com.example.FinCiclo.dto.AuthResponse;
+import com.example.FinCiclo.dto.LoginRequest;
+import com.example.FinCiclo.dto.RegisterRequest;
+import com.example.FinCiclo.entity.Role;
 import com.example.FinCiclo.entity.Usuario;
+import com.example.FinCiclo.enums.RoleName;
+import com.example.FinCiclo.repository.RoleRepository;
 import com.example.FinCiclo.repository.UsuarioRepository;
 import com.example.FinCiclo.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -24,80 +32,76 @@ import java.util.Map;
 public class AuthController {
 
     private final UsuarioRepository usuarioRepository;
+    private final RoleRepository roleRepository;   // 👈 IMPORTANTE
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
 
     @PostMapping("/register")
-    public ResponseEntity<Map<String, String>> register(@RequestBody Map<String, String> request) {
+    public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
 
-        if (usuarioRepository.findByEmail(request.get("email")).isPresent()) {
+        if (usuarioRepository.findByEmail(request.getEmail()).isPresent()) {
             return ResponseEntity.badRequest()
-                    .body(Map.of("error", "El email ya está registrado"));
+                    .body(new AuthResponse("El email ya está registrado"));
         }
 
         Usuario usuario = new Usuario();
-        usuario.setNombre(request.get("nombre"));
-        usuario.setEmail(request.get("email"));
-        usuario.setRol(
-                request.get("rol") == null || request.get("rol").isBlank()
-                        ? "USUARIO"
-                        : request.get("rol")
-        );
+        usuario.setName(request.getNombre());
+        usuario.setEmail(request.getEmail());
+        usuario.setPassword(passwordEncoder.encode(request.getPassword()));
+        usuario.setEnabled(true);
 
-        String rawPassword = request.get("password");
-        if (rawPassword == null || rawPassword.isBlank()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Password requerida"));
-        }
+        // 🔹 Rol por defecto
+        RoleName roleName = request.getRol() == null
+                ? RoleName.ROLE_USER
+                : RoleName.valueOf(request.getRol().toUpperCase());
 
-        usuario.setPasswordHash(passwordEncoder.encode(rawPassword));
-        usuario.setCreadoEn(LocalDateTime.now());
-        usuario.setActivo(true);
+        Role role = roleRepository.findByName(roleName)
+                .orElseThrow(() -> new RuntimeException("Rol no encontrado"));
+
+        usuario.setRoles(Set.of(role));
 
         usuarioRepository.save(usuario);
 
-        Map<String, Object> extraClaims = new HashMap<>();
-        extraClaims.put("rol", usuario.getRol());
-        extraClaims.put("nombre", usuario.getNombre());
-
-        UserDetails userDetails = new org.springframework.security.core.userdetails.User(
+        User userDetails = new User(
                 usuario.getEmail(),
-                usuario.getPasswordHash(),
-                Collections.emptyList()
+                usuario.getPassword(),
+                List.of(new SimpleGrantedAuthority(roleName.name()))
         );
 
-        String token = jwtService.generateToken(extraClaims, userDetails);
+        String jwt = jwtService.generateToken(new HashMap<>(), userDetails);
 
-        return ResponseEntity.ok(Map.of("token", token));
+        return ResponseEntity.ok(new AuthResponse(jwt));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<Map<String, String>> login(@RequestBody Map<String, String> request) {
+    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
 
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.get("email"),
-                        request.get("password")
-                )
-        );
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.getEmail(),
+                            request.getPassword()
+                    )
+            );
+        } catch (BadCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new AuthResponse("Credenciales incorrectas"));
+        }
 
-        Usuario user = usuarioRepository.findByEmail(request.get("email"))
+        Usuario usuario = usuarioRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
 
-    
-        Map<String, Object> extraClaims = new HashMap<>();
-        extraClaims.put("rol", user.getRol());
-        extraClaims.put("nombre", user.getNombre());
-
-        UserDetails userDetails = new org.springframework.security.core.userdetails.User(
-                user.getEmail(),
-                user.getPasswordHash(),
-                Collections.emptyList()
+        User userDetails = new User(
+                usuario.getEmail(),
+                usuario.getPassword(),
+                usuario.getRoles().stream()
+                        .map(r -> new SimpleGrantedAuthority("ROLE_" + r.getName()))
+                        .toList()
         );
 
-        String token = jwtService.generateToken(extraClaims, userDetails);
+        String jwt = jwtService.generateToken(new HashMap<>(), userDetails);
 
-        return ResponseEntity.ok(Map.of("token", token));
+        return ResponseEntity.ok(new AuthResponse(jwt));
     }
 }

@@ -1,16 +1,16 @@
 spring:
+  application:
+    name: FinCiclo
+
   datasource:
     url: jdbc:postgresql://localhost:5432/proyecto_db
-    username: postgres-local
+    username: postgres
     password: 1234
 
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
 
 server:
   port: 8080

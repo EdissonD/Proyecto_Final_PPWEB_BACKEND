@@ -4,12 +4,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -18,6 +18,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -26,44 +27,34 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
         http
-                .csrf(csrf -> csrf.disable())
-                // ✅ HABILITA CORS GLOBAL USANDO LA CONFIGURACIÓN DEFINIDA ABAJO
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .authorizeHttpRequests(auth -> auth
-                        // 🔓 ENDPOINTS PÚBLICOS (Solo Auth y lo que sea explícitamente público)
-                        .requestMatchers("/api/auth/**").permitAll()
+            .csrf(csrf -> csrf.disable())
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .sessionManagement(sess ->
+                sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .authenticationProvider(authenticationProvider)
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .authorizeHttpRequests(auth -> auth
+                // 🔓 ENDPOINTS PÚBLICOS
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/asesorias/publica").permitAll()
+                .requestMatchers("/api/asesorias/ocupadas/**").permitAll()
 
-                        // ✅ público para agendar
-                        .requestMatchers("/api/disponibilidades/**").permitAll()
-
-                        // ✅ Endpoints de asesorías públicas
-                        .requestMatchers("/api/asesorias/publica").permitAll()
-                        .requestMatchers("/api/asesorias/ocupadas/**").permitAll()
-
-                        // 🔒 TODO LO DEMÁS REQUIERE AUTENTICACIÓN
-                        // Aquí caen automáticamente:
-                        // - /api/programadores/**
-                        // - /api/proyectos/programador/**
-                        // - /api/disponibilidades/programador/** (Nota: ahora cubierto por la regla
-                        // pública de arriba)
-                        // - /api/asesorias/programador/**
-                        .requestMatchers("/api/programadores/**").permitAll()
-                        .anyRequest().authenticated())
-
-                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authenticationProvider(authenticationProvider)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                // 🔒 TODO LO DEMÁS REQUIERE JWT
+                .anyRequest().authenticated()
+            );
 
         return http.build();
     }
 
-    // ✅ CORS para permitir peticiones desde Angular
+    // ✅ CORS para Angular
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of("http://localhost:4200"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
 

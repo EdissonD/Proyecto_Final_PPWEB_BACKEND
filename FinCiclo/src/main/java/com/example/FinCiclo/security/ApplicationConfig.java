@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider; // <--- ESTE ES EL IMPORT CLAVE
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -21,18 +21,14 @@ public class ApplicationConfig {
 
     @Bean
     public UserDetailsService userDetailsService() {
-        return username -> usuarioRepository.findByEmail(username)
-                .map(usuario -> new org.springframework.security.core.userdetails.User(
-                        usuario.getEmail(),
-                        usuario.getPasswordHash(),
-                        java.util.Collections.emptyList()
-                ))
-                .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
+        return email -> usuarioRepository.findByEmail(email)
+                .map(UserDetailsImpl::build)
+                .orElseThrow(() ->
+                        new UsernameNotFoundException("Usuario no encontrado"));
     }
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
-        // Ahora Java sabrá que esta clase viene del import de arriba
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
         authProvider.setUserDetailsService(userDetailsService());
         authProvider.setPasswordEncoder(passwordEncoder());
@@ -40,7 +36,9 @@ public class ApplicationConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration config
+    ) throws Exception {
         return config.getAuthenticationManager();
     }
 
